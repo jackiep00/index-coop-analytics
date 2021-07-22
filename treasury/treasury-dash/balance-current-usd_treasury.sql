@@ -14,7 +14,7 @@
 
 */
 
--- Start Generalized Price Feed block - see generalized_price_feed.sql
+-- Start Generalized Price Feed block - see eod_price_feed.sql
 
 -- Modified price feed using EOD prices
 with prices_by_minute as (
