@@ -1,6 +1,4 @@
--- Start Generalized Price Feed block - see generalized_price_feed.sql
-
--- Modified price feed using EOD prices
+-- Start EOD Price Feed block - see eod_price_feed.sql
 with prices_by_minute as (
 SELECT
         minute
