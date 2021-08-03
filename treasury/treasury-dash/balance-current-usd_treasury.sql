@@ -254,13 +254,11 @@ FROM swap_price_feed
 
 , balances_all_days AS (
     SELECT
-        d.day,
---        b.address,
-        b.contract_address,
-        sum(b.balance) AS "balance"
+        d.day
+        , b.contract_address
+        , b.balance AS "balance"
     FROM balances_w_gap_days b
     INNER JOIN days d ON b.day <= d.day AND d.day < b.next_day
-    GROUP BY 1,2 --,3
     ORDER BY 1,2 --,3
 )
 , usd_value_all_days as (
@@ -274,14 +272,34 @@ FROM swap_price_feed
         b.balance,
         p.price,
         b.balance * coalesce(p.price,0) AS usd_value
+        , lag(day, 1) over (partition by b.contract_address order by day) as prev_day
         , rank() over (order by b.day desc)
     FROM balances_all_days b
     left join erc20.tokens t on b.contract_address = t.contract_address
     LEFT OUTER JOIN prices p ON t.symbol = p.symbol AND b.day = p.dt
     -- LEFT OUTER JOIN wallets w ON b.address = w.address
-    where b.day <= '{{ end_date }}'
+    where b.day <= '{{end_date}}'
     ORDER BY usd_value DESC
     LIMIT 10000
+)
+, balance_changes as (
+    select
+        bal.day
+        , bal.contract_address
+        , bal.token
+        , bal.balance
+        , bal.balance - prev.balance as d_balance
+        , bal.price
+        , bal.price - prev.price as d_price
+        , bal.usd_value
+        , bal.usd_value - prev.usd_value as d_usd_value
+        , prev.balance * (bal.price - prev.price) as price_effect
+        , bal.price * (bal.balance - prev.balance) as amount_effect
+        , bal.rank
+    from usd_value_all_days bal
+    left join usd_value_all_days prev on bal.prev_day = prev.day
+        and bal.contract_address = prev.contract_address
+
 )
 select contract_address
     , token

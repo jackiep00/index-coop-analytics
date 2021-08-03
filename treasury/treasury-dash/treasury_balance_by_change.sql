@@ -1,10 +1,5 @@
 /*
-    This should be identical to USD Treasury Balance 1
-    with the query here: https://duneanalytics.com/queries/44939
-
-    Except that it takes a different "end_date" parameter.
-    The point of this is to show balances on two different days.
-    Query for this one here: https://duneanalytics.com/queries/66423
+    query here: https://duneanalytics.com/queries/96139
 
     forked from https://duneanalytics.com/queries/22041/46378
 
@@ -19,7 +14,8 @@
 
 */
 
--- Start Generalized Price Feed block - see generalized_price_feed.sql
+-- Start EOD Price Feed block - see EOD_price_feed.sql
+
 -- Modified price feed using EOD prices
 with prices_by_minute as (
 SELECT
@@ -159,6 +155,7 @@ SELECT
     where row_num = 1
 
 ),
+
 prices AS (
 
 SELECT
@@ -226,7 +223,6 @@ FROM swap_price_feed
     AND evt_block_time >= (SELECT min(day) FROM creation_days)
     GROUP BY 1,2,3
 )
-
 , decimals as (
     select distinct contract_address
     , decimals
@@ -257,13 +253,11 @@ FROM swap_price_feed
 
 , balances_all_days AS (
     SELECT
-        d.day,
---        b.address,
-        b.contract_address,
-        sum(b.balance) AS "balance"
+        d.day
+        , b.contract_address
+        , b.balance AS "balance"
     FROM balances_w_gap_days b
     INNER JOIN days d ON b.day <= d.day AND d.day < b.next_day
-    GROUP BY 1,2 --,3
     ORDER BY 1,2 --,3
 )
 , usd_value_all_days as (
@@ -277,19 +271,42 @@ FROM swap_price_feed
         b.balance,
         p.price,
         b.balance * coalesce(p.price,0) AS usd_value
+        , lag(day, 1) over (partition by b.contract_address order by day) as prev_day
         , rank() over (order by b.day desc)
     FROM balances_all_days b
     left join erc20.tokens t on b.contract_address = t.contract_address
     LEFT OUTER JOIN prices p ON t.symbol = p.symbol AND b.day = p.dt
     -- LEFT OUTER JOIN wallets w ON b.address = w.address
-    where b.day <= '{{end_date_2}}'
+    where b.day between '{{start_date}}' and '{{end_date}}'
     ORDER BY usd_value DESC
     LIMIT 10000
 )
-select contract_address
-    , token
-    , balance
-    , usd_value
-from usd_value_all_days
-where rank = 1
+, balance_changes as (
+    select
+        bal.day
+        , bal.contract_address
+        , bal.token
+        , bal.balance
+        , bal.balance - prev.balance as d_balance
+        , bal.price
+        , bal.price - prev.price as d_price
+        , bal.usd_value
+        , bal.usd_value - prev.usd_value as d_usd_value
+        , prev.balance * (bal.price - prev.price) as price_effect
+        , bal.price * (bal.balance - prev.balance) as amount_effect
+        , bal.rank
+    from usd_value_all_days bal
+    left join usd_value_all_days prev on bal.prev_day = prev.day
+        and bal.contract_address = prev.contract_address
+
+)
+SELECT
+    date_trunc('{{date_granularity}}',day) as date
+    , avg(usd_value) as usd_value
+    , sum(d_usd_value) as d_usd_value
+    , sum(price_effect) as price_effect
+    , sum(amount_effect) as amount_effect
+FROM balance_changes
+group by 1
+
 ;

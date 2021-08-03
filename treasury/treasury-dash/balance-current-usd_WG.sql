@@ -348,7 +348,7 @@ FROM swap_price_feed
     left join erc20.tokens t on b.contract_address = t.contract_address
     inner JOIN prices p ON t.symbol = p.symbol AND b.day = p.dt
     LEFT OUTER JOIN wallets w ON b.address = w.address
-    where b.day <= '{{ end_date }}'
+    where b.day <= '{{end_date}}'
     ORDER BY usd_value DESC
     LIMIT 10000
 )
